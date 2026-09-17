@@ -1,0 +1,22 @@
+{
+  "name": "connectsphere",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ConnectSphere - Real-time video conferencing and collaboration platform",
+  "scripts": {
+    "dev": "concurrently -n \"SERVER,CLIENT\" -c \"green,cyan\" \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "build": "npm --prefix client run build && npm --prefix server run build",
+    "prisma:generate": "npx prisma generate --schema=./prisma/schema.prisma",
+    "prisma:push": "npx prisma db push --schema=./prisma/schema.prisma",
+    "setup": "npm --prefix server install && npm --prefix client install"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "prisma": "^6.19.3"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3"
+  }
+}

@@ -1,0 +1,225 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ease-editorial: cubic-bezier(0.16, 1, 0.3, 1);
+  --color-forest: #01472e;
+  --color-sage: #ccd5ae;
+  --color-olive: #e9edc9;
+  --color-cream: #fefae0;
+  --color-moss: #a3b18a;
+}
+
+@layer base {
+  * {
+    border-color: rgba(1, 71, 46, 0.12);
+  }
+  
+  body {
+    background-color: var(--color-cream);
+    color: var(--color-forest);
+    font-family: 'Inter', system-ui, sans-serif;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: 'Anton', sans-serif;
+    text-transform: uppercase;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-20px) rotate(5deg);
+  }
+}
+
+@keyframes float-reverse {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(18px) rotate(-4deg);
+  }
+}
+
+@keyframes pulse-subtle {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.04);
+  }
+}
+
+.animate-float {
+  animation: float 6s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.animate-float-slow {
+  animation: float 9s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.animate-float-reverse {
+  animation: float-reverse 7s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+/* Typography styles - calibrated to fit within viewport without clipping */
+.hero-typography {
+  font-family: 'Anton', sans-serif;
+  font-size: clamp(2.8rem, 9.5vw, 8.2rem);
+  line-height: 0.90;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+}
+
+.section-title {
+  font-family: 'Anton', sans-serif;
+  font-size: clamp(2.2rem, 7vw, 5.8rem);
+  line-height: 0.92;
+  letter-spacing: -0.025em;
+  text-transform: uppercase;
+}
+
+.sub-title {
+  font-family: 'Anton', sans-serif;
+  font-size: clamp(1.8rem, 4.5vw, 4rem);
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+}
+
+/* Warm luminous background meshes to eliminate plainness */
+.bg-warm-mesh {
+  background-color: var(--color-cream);
+  background-image: 
+    radial-gradient(ellipse at 15% 25%, rgba(224, 122, 95, 0.08) 0%, transparent 45%),
+    radial-gradient(ellipse at 85% 75%, rgba(224, 159, 62, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, rgba(204, 213, 174, 0.25) 0%, transparent 70%);
+}
+
+.bg-sage-mesh {
+  background-color: var(--color-sage);
+  background-image: 
+    radial-gradient(circle at 85% 15%, rgba(224, 159, 62, 0.14) 0%, transparent 40%),
+    radial-gradient(circle at 10% 80%, rgba(224, 122, 95, 0.12) 0%, transparent 45%),
+    radial-gradient(circle at 50% 50%, rgba(254, 250, 224, 0.35) 0%, transparent 60%);
+}
+
+.bg-olive-mesh {
+  background-color: var(--color-olive);
+  background-image: 
+    radial-gradient(ellipse at 80% 20%, rgba(224, 122, 95, 0.10) 0%, transparent 40%),
+    radial-gradient(ellipse at 20% 80%, rgba(1, 71, 46, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, rgba(254, 250, 224, 0.3) 0%, transparent 70%);
+}
+
+.bg-forest-mesh {
+  background-color: var(--color-forest);
+  background-image: 
+    radial-gradient(ellipse at 85% 20%, rgba(224, 159, 62, 0.12) 0%, transparent 40%),
+    radial-gradient(ellipse at 15% 80%, rgba(163, 177, 138, 0.15) 0%, transparent 50%);
+}
+
+.editorial-label {
+  font-family: 'Inter', sans-serif;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.25em;
+  font-size: 0.72rem;
+}
+
+/* Custom noise texture overlay */
+.noise-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.04;
+}
+
+/* Blur-reveal card interaction */
+.feature-card-wrapper {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.feature-card-wrapper:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 25px 50px -12px rgba(1, 71, 46, 0.22);
+}
+
+.blur-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(1, 71, 46, 0.30);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: inherit;
+}
+
+.feature-card-wrapper:hover .blur-overlay {
+  opacity: 1;
+}
+
+.blur-reveal-btn {
+  transform: translateY(32px);
+  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.feature-card-wrapper:hover .blur-reveal-btn {
+  transform: translateY(0);
+}
+
+/* Rounded geometry classes */
+.rounded-container-xl {
+  border-radius: 5rem;
+}
+
+.rounded-card-lg {
+  border-radius: 2.5rem;
+}
+
+.rounded-floating {
+  border-radius: 3rem;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #fefae0;
+}
+::-webkit-scrollbar-thumb {
+  background: #a3b18a;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #01472e;
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
