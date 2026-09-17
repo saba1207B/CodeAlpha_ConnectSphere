@@ -115,63 +115,24 @@ export function createStudioVideoStream(
     ctx.arc(640, 320, 85, 0, Math.PI * 2);
     ctx.fill();
 
-    // Monogram text
-    ctx.fillStyle = '#01472e';
-    ctx.font = 'bold 54px Anton, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(initials, 640, 323);
-    ctx.restore();
-
-    // Participant Name & Role Tag
-    ctx.save();
-    ctx.fillStyle = '#fefae0';
-    ctx.font = 'bold 24px Inter, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(name, 640, 460);
-
-    ctx.fillStyle = '#ccd5ae';
-    ctx.font = '14px Inter, sans-serif';
-    ctx.fillText(role.toUpperCase(), 640, 490);
-
-    // Animated live audio frequency bars
-    const barWidth = 6;
-    const barSpacing = 4;
-    const barCount = 7;
-    const totalWidth = barCount * (barWidth + barSpacing);
-    const startX = 640 - totalWidth / 2;
-
-    for (let i = 0; i < barCount; i++) {
-      const barHeight = 8 + Math.abs(Math.sin(t * 2.5 + i * 0.8)) * 26;
-      ctx.fillStyle = accentColor;
-      ctx.beginPath();
-      ctx.roundRect(
-        startX + i * (barWidth + barSpacing),
-        530 - barHeight / 2,
-        barWidth,
-        barHeight,
-        3
-      );
-      ctx.fill();
-    }
-
-    // Top Right Studio Status Badge
-    ctx.fillStyle = 'rgba(1, 71, 46, 0.6)';
+    // Clean avatar disc in center
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#262a35';
     ctx.beginPath();
-    ctx.roundRect(1080, 30, 170, 32, 16);
+    ctx.arc(640, 360, 90, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(204, 213, 174, 0.3)';
+    ctx.strokeStyle = '#3b4152';
+    ctx.lineWidth = 3;
     ctx.stroke();
 
-    ctx.fillStyle = '#a3b18a';
+    // Clean subtle pulse wave
+    const waveR = 95 + Math.sin(t * 2) * 12;
+    ctx.strokeStyle = 'rgba(59, 130, 246, 0.3)';
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(1100, 46, 4, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = '#fefae0';
-    ctx.font = 'bold 10px Inter, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('GLOBAL MESH 1080P', 1112, 50);
+    ctx.arc(640, 360, waveR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
 
     ctx.restore();
 

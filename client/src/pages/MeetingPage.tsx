@@ -12,17 +12,17 @@ import { FileShareDrawer } from '../components/meeting/FileShareDrawer';
 import { ParticipantsDrawer } from '../components/meeting/ParticipantsDrawer';
 import { DeviceSettingsModal } from '../components/meeting/DeviceSettingsModal';
 
+type ActiveDrawerType = 'none' | 'chat' | 'participants' | 'files';
+
 export const MeetingPage: React.FC = () => {
   const { meetingId = 'room-default' } = useParams<{ meetingId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { socket, isConnected } = useSocket();
 
-  // Drawer / modal open states
-  const [chatOpen, setChatOpen] = useState(false);
-  const [participantsOpen, setParticipantsOpen] = useState(false);
+  // Mutually Exclusive Drawer State (Prevents ANY window overlapping!)
+  const [activeDrawer, setActiveDrawer] = useState<ActiveDrawerType>('none');
   const [whiteboardOpen, setWhiteboardOpen] = useState(false);
-  const [filesOpen, setFilesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [activeReactions, setActiveReactions] = useState<{ [id: string]: string }>({});
@@ -55,7 +55,6 @@ export const MeetingPage: React.FC = () => {
     isVideoOff,
     isScreenSharing,
     activeSpeakerSocketId,
-    cameraError,
     isStudioCameraMode,
     toggleAudio,
     toggleVideo,
@@ -161,9 +160,11 @@ export const MeetingPage: React.FC = () => {
     }
   };
 
-  const handleToggleChat = () => {
-    setChatOpen(!chatOpen);
-    if (!chatOpen) setUnreadChatCount(0);
+  const toggleDrawer = (drawer: ActiveDrawerType) => {
+    setActiveDrawer((prev) => (prev === drawer ? 'none' : drawer));
+    if (drawer === 'chat') {
+      setUnreadChatCount(0);
+    }
   };
 
   const toggleViewMode = () => {
@@ -183,71 +184,78 @@ export const MeetingPage: React.FC = () => {
         onRename={handleRename}
       />
 
-      {/* Main Video Stage */}
-      <main className="flex-1 relative overflow-hidden flex items-center justify-center bg-[#121316]">
-        <VideoGrid
-          localStream={localStream}
-          screenStream={screenStream}
-          remotePeers={remotePeers}
-          currentUserName={currentUserName}
-          isAudioMuted={isAudioMuted}
-          isVideoOff={isVideoOff}
-          isScreenSharing={isScreenSharing}
-          activeSpeakerSocketId={activeSpeakerSocketId}
-          activeReactions={activeReactions}
-          viewMode={viewMode}
-          onRename={handleRename}
-          onStopScreenShare={toggleScreenShare}
-        />
+      {/* Main Content Area: Video Grid + Optional Docked Sidebar (Zero Overlap!) */}
+      <div className="flex-1 relative overflow-hidden flex flex-row min-h-0">
+        {/* Center Video Stage (Flexibly takes available width) */}
+        <main className="flex-1 relative overflow-hidden flex items-center justify-center bg-[#121316] min-w-0">
+          <VideoGrid
+            localStream={localStream}
+            screenStream={screenStream}
+            remotePeers={remotePeers}
+            currentUserName={currentUserName}
+            isAudioMuted={isAudioMuted}
+            isVideoOff={isVideoOff}
+            isScreenSharing={isScreenSharing}
+            activeSpeakerSocketId={activeSpeakerSocketId}
+            activeReactions={activeReactions}
+            viewMode={viewMode}
+            onRename={handleRename}
+            onStopScreenShare={toggleScreenShare}
+          />
+        </main>
 
-        {/* Camera fallback notice if hardware blocked */}
-        {cameraError && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 px-4 py-2 rounded-lg bg-[#20232b] border border-[#373b49] text-xs font-medium text-amber-400 shadow-xl flex items-center space-x-2">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-            <span>Virtual Camera Active (Webcam Unavailable)</span>
+        {/* Mutually Exclusive Docked Sidebars (Only ONE rendered at a time!) */}
+        {activeDrawer === 'chat' && (
+          <div className="w-full sm:w-80 h-full flex-shrink-0 z-30">
+            <ChatDrawer
+              isOpen={true}
+              onClose={() => setActiveDrawer('none')}
+              meetingId={meetingId}
+              currentUserId={currentUserId}
+              currentUserName={currentUserName}
+              socket={socket}
+            />
           </div>
         )}
 
-        {/* Side Drawers */}
-        <ChatDrawer
-          isOpen={chatOpen}
-          onClose={() => setChatOpen(false)}
-          meetingId={meetingId}
-          currentUserId={currentUserId}
-          currentUserName={currentUserName}
-          socket={socket}
-        />
+        {activeDrawer === 'participants' && (
+          <div className="w-full sm:w-80 h-full flex-shrink-0 z-30">
+            <ParticipantsDrawer
+              isOpen={true}
+              onClose={() => setActiveDrawer('none')}
+              meetingId={meetingId}
+              currentUserId={currentUserId}
+              currentUserName={currentUserName}
+              isAudioMuted={isAudioMuted}
+              isVideoOff={isVideoOff}
+              remotePeers={remotePeers}
+            />
+          </div>
+        )}
 
-        <ParticipantsDrawer
-          isOpen={participantsOpen}
-          onClose={() => setParticipantsOpen(false)}
-          meetingId={meetingId}
-          currentUserId={currentUserId}
-          currentUserName={currentUserName}
-          isAudioMuted={isAudioMuted}
-          isVideoOff={isVideoOff}
-          remotePeers={remotePeers}
-        />
-
-        <FileShareDrawer
-          isOpen={filesOpen}
-          onClose={() => setFilesOpen(false)}
-          meetingId={meetingId}
-          currentUserId={currentUserId}
-          currentUserName={currentUserName}
-          socket={socket}
-        />
-      </main>
+        {activeDrawer === 'files' && (
+          <div className="w-full sm:w-80 h-full flex-shrink-0 z-30">
+            <FileShareDrawer
+              isOpen={true}
+              onClose={() => setActiveDrawer('none')}
+              meetingId={meetingId}
+              currentUserId={currentUserId}
+              currentUserName={currentUserName}
+              socket={socket}
+            />
+          </div>
+        )}
+      </div>
 
       {/* Zoom Style Bottom Dock */}
       <ControlBar
         isAudioMuted={isAudioMuted}
         isVideoOff={isVideoOff}
         isScreenSharing={isScreenSharing}
-        chatOpen={chatOpen}
-        participantsOpen={participantsOpen}
+        chatOpen={activeDrawer === 'chat'}
+        participantsOpen={activeDrawer === 'participants'}
         whiteboardOpen={whiteboardOpen}
-        filesOpen={filesOpen}
+        filesOpen={activeDrawer === 'files'}
         participantCount={1 + remotePeers.length}
         unreadChatCount={unreadChatCount}
         isStudioCameraMode={isStudioCameraMode}
@@ -255,10 +263,10 @@ export const MeetingPage: React.FC = () => {
         onToggleAudio={toggleAudio}
         onToggleVideo={toggleVideo}
         onToggleScreenShare={toggleScreenShare}
-        onToggleChat={handleToggleChat}
-        onToggleParticipants={() => setParticipantsOpen(!participantsOpen)}
+        onToggleChat={() => toggleDrawer('chat')}
+        onToggleParticipants={() => toggleDrawer('participants')}
         onToggleWhiteboard={() => setWhiteboardOpen(!whiteboardOpen)}
-        onToggleFiles={() => setFilesOpen(!filesOpen)}
+        onToggleFiles={() => toggleDrawer('files')}
         onOpenSettings={() => setSettingsOpen(true)}
         onLeaveMeeting={handleLeaveMeeting}
         onToggleCameraMode={toggleCameraMode}

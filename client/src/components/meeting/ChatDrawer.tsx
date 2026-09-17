@@ -147,7 +147,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed sm:absolute top-14 bottom-18 sm:bottom-20 right-0 w-full sm:w-84 z-40 bg-[#1e2026] border-l border-[#2e323e] shadow-2xl flex flex-col transition-all duration-200 select-none text-zinc-200">
+    <div className="w-full h-full bg-[#1e2026] border-l border-[#2e323e] flex flex-col select-none text-zinc-200 shadow-xl">
       {/* Drawer Header */}
       <div className="p-3 sm:p-4 border-b border-[#2e323e] flex items-center justify-between">
         <div className="flex items-center space-x-2">
