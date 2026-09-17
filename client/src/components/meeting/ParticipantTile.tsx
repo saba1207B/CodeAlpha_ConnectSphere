@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Mic, MicOff, VideoOff, Pin, Sparkles, User as UserIcon, ShieldCheck } from 'lucide-react';
+import { Mic, MicOff, VideoOff, Pin, User as UserIcon } from 'lucide-react';
 
 interface ParticipantTileProps {
   stream: MediaStream | null;
@@ -13,20 +13,20 @@ interface ParticipantTileProps {
   isStudioPeer?: boolean;
   reactionEmoji?: string | null;
   onPin?: () => void;
+  onRename?: () => void;
 }
 
 export const ParticipantTile: React.FC<ParticipantTileProps> = ({
   stream,
   name,
-  role,
   isLocal = false,
   isAudioMuted = false,
   isVideoOff = false,
   isSpeaking = false,
   isPinned = false,
-  isStudioPeer = false,
   reactionEmoji = null,
-  onPin
+  onPin,
+  onRename
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -36,114 +36,92 @@ export const ParticipantTile: React.FC<ParticipantTileProps> = ({
     }
   }, [stream]);
 
-  const initials = name
+  // Clean name without 'Guest Contributor'
+  const displayName = name === 'Guest Contributor' ? (isLocal ? 'You' : 'Participant') : name;
+
+  const initials = displayName
     .split(' ')
     .map((n) => n[0])
+    .filter(Boolean)
     .join('')
     .substring(0, 2)
-    .toUpperCase();
+    .toUpperCase() || (isLocal ? 'ME' : 'U');
 
   return (
     <div
-      className={`relative w-full h-full min-h-[220px] rounded-card-lg overflow-hidden bg-[#002619] border transition-all duration-300 group flex items-center justify-center ${
+      className={`relative w-full h-full min-h-[180px] rounded-lg overflow-hidden bg-[#181a20] border transition-all duration-200 group flex items-center justify-center select-none ${
         isSpeaking
-          ? 'ring-4 ring-forest-light shadow-floating border-sage'
-          : 'border-forest/25 shadow-md hover:border-forest/50'
+          ? 'border-2 border-emerald-500 shadow-[0_0_14px_rgba(16,185,129,0.35)]'
+          : 'border-[#2a2d36] hover:border-[#3b404d]'
       }`}
     >
-      {/* Video Element (Canvas stream or Webcam track) */}
+      {/* Live Video Track */}
       <video
         ref={videoRef}
         autoPlay
         playsInline
-        muted={isLocal} // Mute local video to prevent audio feedback loop
-        className={`w-full h-full object-cover transition-opacity duration-300 ${
+        muted={isLocal}
+        className={`w-full h-full object-cover transition-opacity duration-200 ${
           isVideoOff ? 'opacity-0 pointer-events-none' : 'opacity-100'
-        } ${isLocal && !isStudioPeer ? 'scale-x-[-1]' : ''}`}
+        } ${isLocal ? 'scale-x-[-1]' : ''}`}
       />
 
-      {/* Fallback Display if video is explicitly muted off */}
+      {/* Camera Off Avatar Fallback (Clean Zoom Style) */}
       {isVideoOff && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center p-6 bg-gradient-to-b from-forest to-[#002619]">
-          <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-cream text-forest flex items-center justify-center font-display text-3xl sm:text-4xl shadow-deep">
-            {initials || <UserIcon className="w-10 h-10" />}
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#181a20]">
+          <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-[#272a34] border border-[#373b49] text-zinc-200 flex items-center justify-center font-bold text-2xl sm:text-3xl shadow-inner">
+            {initials || <UserIcon className="w-10 h-10 text-zinc-400" />}
           </div>
-          <span className="mt-4 font-bold uppercase tracking-wider text-sm text-cream/90">
-            {name} {isLocal && '(You)'}
-          </span>
-          <span className="text-[10px] uppercase tracking-widest text-sage/70 mt-1">
-            Camera Disabled
+          <span className="mt-3 text-xs sm:text-sm font-medium text-zinc-300">
+            {displayName} {isLocal && '(Me)'}
           </span>
         </div>
       )}
 
-      {/* Floating Reaction Animation Badge */}
+      {/* Floating Reaction Animation */}
       {reactionEmoji && (
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-40 text-5xl animate-bounce drop-shadow-2xl pointer-events-none">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-40 text-5xl sm:text-6xl animate-bounce drop-shadow-2xl pointer-events-none">
           {reactionEmoji}
         </div>
       )}
 
-      {/* Top Badges */}
-      <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-10">
-        <div className="flex items-center space-x-1.5">
-          {isSpeaking && (
-            <div className="flex items-center space-x-1.5 px-3 py-1 rounded-full bg-forest/90 text-cream text-[10px] font-bold uppercase tracking-widest shadow-sm backdrop-blur-md border border-forest-light/40">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-              <span>Speaking</span>
-            </div>
-          )}
-
-          {isStudioPeer && (
-            <div className="flex items-center space-x-1 px-2.5 py-1 rounded-full bg-forest/80 text-sage text-[10px] font-bold uppercase tracking-wider backdrop-blur-md border border-sage/20">
-              <ShieldCheck className="w-3 h-3 text-sage" />
-              <span>Verified Studio</span>
-            </div>
-          )}
-        </div>
+      {/* Top Hover Controls */}
+      <div className="absolute top-2 right-2 flex items-center space-x-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+        {onRename && isLocal && (
+          <button
+            onClick={onRename}
+            className="p-1.5 rounded bg-black/60 hover:bg-black/80 text-zinc-300 hover:text-white text-[10px] font-medium backdrop-blur-sm"
+            title="Rename display name"
+          >
+            Rename
+          </button>
+        )}
 
         {onPin && (
           <button
             onClick={onPin}
-            className={`pointer-events-auto p-2 rounded-full backdrop-blur-md transition-opacity ${
-              isPinned ? 'bg-cream text-forest opacity-100' : 'bg-forest/80 text-cream opacity-0 group-hover:opacity-100 hover:bg-forest'
+            className={`p-1.5 rounded backdrop-blur-sm transition-colors ${
+              isPinned
+                ? 'bg-blue-600 text-white'
+                : 'bg-black/60 hover:bg-black/80 text-zinc-300 hover:text-white'
             }`}
-            title={isPinned ? 'Unpin participant' : 'Pin participant'}
+            title={isPinned ? 'Unpin' : 'Pin'}
           >
             <Pin className="w-3.5 h-3.5" />
           </button>
         )}
       </div>
 
-      {/* Bottom Identity & Audio Status Banner */}
-      <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-xs font-bold text-cream px-4 py-2 rounded-full bg-forest/85 backdrop-blur-md border border-forest-light/30 z-10">
-        <div className="flex items-center space-x-2 truncate max-w-[70%]">
-          <span className="tracking-wider uppercase truncate">
-            {name} {isLocal && <span className="text-sage font-normal">(You)</span>}
-          </span>
-          {role && (
-            <span className="hidden sm:inline text-[9px] px-2 py-0.5 rounded-full bg-cream/10 text-sage/80 font-normal">
-              {role}
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-center space-x-2">
-          {isAudioMuted ? (
-            <div className="p-1 rounded-full bg-rose-950/80 text-rose-300 border border-rose-800/40" title="Muted">
-              <MicOff className="w-3 h-3" />
-            </div>
-          ) : (
-            <div className="p-1 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800/40" title="Audio Live">
-              <Mic className="w-3 h-3" />
-            </div>
-          )}
-          {isVideoOff && (
-            <div className="p-1 rounded-full bg-amber-950/80 text-amber-300 border border-amber-800/40" title="Video Off">
-              <VideoOff className="w-3 h-3" />
-            </div>
-          )}
-        </div>
+      {/* Bottom-Left Zoom-Style Translucent Name & Audio Badge */}
+      <div className="absolute bottom-2.5 left-2.5 z-20 flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-black/75 backdrop-blur-md border border-white/10 text-white text-xs font-medium max-w-[85%] truncate shadow-md">
+        {isAudioMuted ? (
+          <MicOff className="w-3.5 h-3.5 text-rose-500 flex-shrink-0" />
+        ) : (
+          <Mic className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+        )}
+        <span className="truncate">
+          {displayName} {isLocal && <span className="text-zinc-400 font-normal">(Me)</span>}
+        </span>
       </div>
     </div>
   );

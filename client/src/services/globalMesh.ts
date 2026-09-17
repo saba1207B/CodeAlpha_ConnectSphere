@@ -3,6 +3,7 @@ import { Peer, MediaConnection, DataConnection } from 'peerjs';
 export interface GlobalMeshCallbacks {
   onRemoteStream: (peerId: string, userName: string, userId: string, stream: MediaStream) => void;
   onPeerLeave: (peerId: string) => void;
+  onPeerIdentityUpdate?: (peerId: string, userName: string, userId: string) => void;
   onChatMessage?: (message: any) => void;
   onWhiteboardEvent?: (data: any) => void;
   onFileShared?: (file: any) => void;
@@ -27,6 +28,8 @@ export class GlobalMeshCoordinator {
   private myPeerId: string = '';
   private activeCalls = new Map<string, MediaConnection>();
   private activeDataConns = new Map<string, DataConnection>();
+  private remotePeerMeta = new Map<string, { userId: string; userName: string }>();
+  private pendingStreams = new Map<string, MediaStream>();
   private localStream: MediaStream | null = null;
   private callbacks: GlobalMeshCallbacks;
   private destroyed: boolean = false;
@@ -47,7 +50,6 @@ export class GlobalMeshCoordinator {
 
   public setLocalStream(stream: MediaStream) {
     this.localStream = stream;
-    // Update ongoing calls with the new stream if possible
     this.activeCalls.forEach((call) => {
       const peerConn = (call as any).peerConnection as RTCPeerConnection;
       if (peerConn) {
@@ -64,7 +66,11 @@ export class GlobalMeshCoordinator {
     });
   }
 
-  // Attempt joining deterministic room slots: cs-<cleanId>-0, cs-<cleanId>-1, ... up to slot 7
+  public setUserName(newName: string) {
+    this.currentUserName = newName;
+    this.broadcastHandshake();
+  }
+
   public async start(localStream: MediaStream | null) {
     this.localStream = localStream;
     this.tryRegisterSlot(0);
@@ -72,8 +78,7 @@ export class GlobalMeshCoordinator {
 
   private tryRegisterSlot(slotIndex: number) {
     if (this.destroyed) return;
-    if (slotIndex > 6) {
-      // Fallback: register with a unique random ID
+    if (slotIndex > 8) {
       this.initPeerWithId(`cs-${this.cleanRoomId}-${Math.random().toString(36).substring(2, 6)}`, slotIndex);
       return;
     }
@@ -101,24 +106,36 @@ export class GlobalMeshCoordinator {
         this.myPeerId = id;
         this.callbacks.onMeshStatusChange?.('connected', id);
 
-        // Listen for incoming calls from other peers anywhere in the world
+        // Listen for incoming calls from peers across the globe
         p.on('call', (incomingCall) => {
+          if (incomingCall.peer === this.myPeerId) return;
+
           const meta = (incomingCall as any).metadata || {};
-          const callerName = meta.userName || 'Peer Collaborator';
+          if (meta.userId === this.currentUserId) return; // Prevent duplicate self-call
+
           const callerUserId = meta.userId || incomingCall.peer;
+          const callerName = meta.userName || 'Participant';
+
+          this.remotePeerMeta.set(incomingCall.peer, { userId: callerUserId, userName: callerName });
 
           if (this.localStream) {
             incomingCall.answer(this.localStream);
           } else {
-            // Answer with empty stream if not ready
             incomingCall.answer();
           }
 
           incomingCall.on('stream', (remoteStream) => {
+            if (remoteStream.id === this.localStream?.id) return;
             this.callbacks.onRemoteStream(incomingCall.peer, callerName, callerUserId, remoteStream);
           });
 
           incomingCall.on('close', () => {
+            this.callbacks.onPeerLeave(incomingCall.peer);
+            this.activeCalls.delete(incomingCall.peer);
+            this.remotePeerMeta.delete(incomingCall.peer);
+          });
+
+          incomingCall.on('error', () => {
             this.callbacks.onPeerLeave(incomingCall.peer);
             this.activeCalls.delete(incomingCall.peer);
           });
@@ -126,8 +143,9 @@ export class GlobalMeshCoordinator {
           this.activeCalls.set(incomingCall.peer, incomingCall);
         });
 
-        // Listen for incoming data connections (chat, whiteboard, files)
+        // Listen for data connections
         p.on('connection', (conn) => {
+          if (conn.peer === this.myPeerId) return;
           this.setupDataConnection(conn);
         });
 
@@ -137,13 +155,12 @@ export class GlobalMeshCoordinator {
 
       p.on('error', (err: any) => {
         if (!slotClaimed && err.type === 'unavailable-id') {
-          // Slot is taken by an earlier participant, try the next slot!
           p.destroy();
           setTimeout(() => {
             this.tryRegisterSlot(slotIndex + 1);
           }, 200);
         } else {
-          console.warn('PeerJS Mesh Notification:', err.type || err.message);
+          console.warn('Global PeerJS event:', err.type || err.message);
         }
       });
     } catch (err) {
@@ -151,19 +168,19 @@ export class GlobalMeshCoordinator {
     }
   }
 
-  // Call all lower slot indices to form full mesh
   private callExistingPeers(mySlot: number) {
     if (!this.peer) return;
 
     for (let i = 0; i < mySlot; i++) {
       const targetPeerId = `cs-${this.cleanRoomId}-${i}`;
+      if (targetPeerId === this.myPeerId) continue;
       this.callPeer(targetPeerId);
       this.connectDataPeer(targetPeerId);
     }
   }
 
   public callPeer(targetPeerId: string) {
-    if (!this.peer || targetPeerId === this.myPeerId) return;
+    if (!this.peer || targetPeerId === this.myPeerId || this.activeCalls.has(targetPeerId)) return;
 
     const call = this.peer.call(targetPeerId, this.localStream || new MediaStream(), {
       metadata: {
@@ -175,30 +192,36 @@ export class GlobalMeshCoordinator {
     if (!call) return;
 
     call.on('stream', (remoteStream) => {
-      const meta = (call as any).metadata || {};
-      this.callbacks.onRemoteStream(
-        targetPeerId,
-        meta.userName || `Peer ${targetPeerId.slice(-1)}`,
-        meta.userId || targetPeerId,
-        remoteStream
-      );
+      if (remoteStream.id === this.localStream?.id) return;
+      this.pendingStreams.set(targetPeerId, remoteStream);
+
+      const known = this.remotePeerMeta.get(targetPeerId);
+      const name = known?.userName || 'Participant';
+      const uid = known?.userId || targetPeerId;
+
+      if (uid !== this.currentUserId) {
+        this.callbacks.onRemoteStream(targetPeerId, name, uid, remoteStream);
+      }
     });
 
     call.on('close', () => {
       this.callbacks.onPeerLeave(targetPeerId);
       this.activeCalls.delete(targetPeerId);
+      this.remotePeerMeta.delete(targetPeerId);
+      this.pendingStreams.delete(targetPeerId);
     });
 
     call.on('error', () => {
       this.callbacks.onPeerLeave(targetPeerId);
       this.activeCalls.delete(targetPeerId);
+      this.pendingStreams.delete(targetPeerId);
     });
 
     this.activeCalls.set(targetPeerId, call);
   }
 
   public connectDataPeer(targetPeerId: string) {
-    if (!this.peer || targetPeerId === this.myPeerId) return;
+    if (!this.peer || targetPeerId === this.myPeerId || this.activeDataConns.has(targetPeerId)) return;
 
     const conn = this.peer.connect(targetPeerId, {
       metadata: {
@@ -214,9 +237,48 @@ export class GlobalMeshCoordinator {
   private setupDataConnection(conn: DataConnection) {
     this.activeDataConns.set(conn.peer, conn);
 
+    const sendHandshake = () => {
+      if (conn.open) {
+        conn.send({
+          type: 'handshake',
+          userId: this.currentUserId,
+          userName: this.currentUserName
+        });
+      }
+    };
+
+    conn.on('open', () => {
+      sendHandshake();
+    });
+
     conn.on('data', (data: any) => {
       if (!data) return;
-      if (data.type === 'chat' && this.callbacks.onChatMessage) {
+
+      if (data.type === 'handshake') {
+        if (data.userId === this.currentUserId) return; // Ignore self
+
+        this.remotePeerMeta.set(conn.peer, {
+          userId: data.userId || conn.peer,
+          userName: data.userName || 'Participant'
+        });
+
+        this.callbacks.onPeerIdentityUpdate?.(
+          conn.peer,
+          data.userName || 'Participant',
+          data.userId || conn.peer
+        );
+
+        // If stream arrived before handshake, notify with real name
+        const pendingStream = this.pendingStreams.get(conn.peer);
+        if (pendingStream) {
+          this.callbacks.onRemoteStream(
+            conn.peer,
+            data.userName || 'Participant',
+            data.userId || conn.peer,
+            pendingStream
+          );
+        }
+      } else if (data.type === 'chat' && this.callbacks.onChatMessage) {
         this.callbacks.onChatMessage(data.payload);
       } else if (data.type === 'whiteboard' && this.callbacks.onWhiteboardEvent) {
         this.callbacks.onWhiteboardEvent(data.payload);
@@ -236,7 +298,18 @@ export class GlobalMeshCoordinator {
     });
   }
 
-  // Broadcast data payload to all connected peers across the globe
+  private broadcastHandshake() {
+    this.activeDataConns.forEach((conn) => {
+      if (conn.open) {
+        conn.send({
+          type: 'handshake',
+          userId: this.currentUserId,
+          userName: this.currentUserName
+        });
+      }
+    });
+  }
+
   public broadcastData(type: 'chat' | 'whiteboard' | 'file' | 'reaction', payload: any) {
     const packet = {
       type,
@@ -259,6 +332,8 @@ export class GlobalMeshCoordinator {
     this.activeCalls.clear();
     this.activeDataConns.forEach((conn) => conn.close());
     this.activeDataConns.clear();
+    this.remotePeerMeta.clear();
+    this.pendingStreams.clear();
     if (this.peer) {
       this.peer.destroy();
       this.peer = null;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, MessageSquare, Sparkles } from 'lucide-react';
+import { X, Send, MessageSquare } from 'lucide-react';
 import { Socket } from 'socket.io-client';
 import { ChatMessage } from '../../types';
 
@@ -11,13 +11,6 @@ interface ChatDrawerProps {
   currentUserName: string;
   socket: Socket | null;
 }
-
-const QUICK_PROMPTS = [
-  'Sounds fantastic! 👏',
-  'Let us inspect the whiteboard 🎨',
-  'I will upload the design spec 📄',
-  'Can everyone hear me clearly? 🎙️'
-];
 
 export const ChatDrawer: React.FC<ChatDrawerProps> = ({
   isOpen,
@@ -31,16 +24,14 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
     try {
       const saved = localStorage.getItem(`connectsphere_chat_${meetingId}`);
       if (saved) return JSON.parse(saved);
-    } catch (e) {
-      // ignore
-    }
+    } catch (e) {}
     return [
       {
-        id: 'welcome-msg',
+        id: 'system-welcome',
         meetingId,
-        senderId: 'studio-elena',
-        senderName: 'Elena Vance (Lead Architect)',
-        text: 'Welcome to ConnectSphere Studio! The real-time encrypted mesh is active. Feel free to collaborate, share documents, or draw on the whiteboard.',
+        senderId: 'system',
+        senderName: 'Meeting Host',
+        text: 'Welcome! In-meeting chat is end-to-end encrypted and visible to everyone in this room.',
         timestamp: new Date().toISOString()
       }
     ];
@@ -54,14 +45,12 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
   useEffect(() => {
     try {
       localStorage.setItem(`connectsphere_chat_${meetingId}`, JSON.stringify(messages));
-    } catch (e) {
-      // ignore
-    }
+    } catch (e) {}
   }, [messages, meetingId]);
 
-  // Dual-Engine Listeners (BroadcastChannel + Socket.io)
+  // Dual-Engine Listeners (BroadcastChannel + Global Mesh + Socket.io)
   useEffect(() => {
-    // 1. BroadcastChannel for serverless cross-tab messaging (GitHub Pages)
+    // 1. BroadcastChannel
     let bc: BroadcastChannel | null = null;
     try {
       bc = new BroadcastChannel(`connectsphere_chat_channel_${meetingId}`);
@@ -76,12 +65,10 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
           });
         }
       };
-    } catch (e) {
-      console.warn('Chat BroadcastChannel not available:', e);
-    }
+    } catch (e) {}
 
     // 2. Global PeerJS Mesh across countries
-    const handleGlobalMeshMsg = (e: any) => {
+    const handleGlobalChatMessage = (e: any) => {
       const msg = e.detail;
       if (msg && msg.senderId !== currentUserId) {
         setMessages((prev) => {
@@ -90,37 +77,30 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
         });
       }
     };
-    window.addEventListener('connectsphere:chat-message', handleGlobalMeshMsg);
+    window.addEventListener('connectsphere:chat-message', handleGlobalChatMessage);
 
-    // 3. Socket.io for backend communication
+    // 3. Socket.io
     if (socket) {
-      const handleNewMessage = (msg: ChatMessage) => {
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === msg.id)) return prev;
-          return [...prev, msg];
-        });
-      };
-
-      const handleChatHistory = (history: ChatMessage[]) => {
-        if (history && history.length > 0) {
-          setMessages(history);
+      const handleNewMessage = (message: ChatMessage) => {
+        if (message.senderId !== currentUserId) {
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === message.id)) return prev;
+            return [...prev, message];
+          });
         }
       };
 
       socket.on('chat:message', handleNewMessage);
-      socket.on('chat:history', handleChatHistory);
-      socket.emit('chat:get-history', { meetingId });
 
       return () => {
         socket.off('chat:message', handleNewMessage);
-        socket.off('chat:history', handleChatHistory);
-        window.removeEventListener('connectsphere:chat-message', handleGlobalMeshMsg);
+        window.removeEventListener('connectsphere:chat-message', handleGlobalChatMessage);
         if (bc) bc.close();
       };
     }
 
     return () => {
-      window.removeEventListener('connectsphere:chat-message', handleGlobalMeshMsg);
+      window.removeEventListener('connectsphere:chat-message', handleGlobalChatMessage);
       if (bc) bc.close();
     };
   }, [socket, meetingId, currentUserId]);
@@ -131,76 +111,32 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
     }
   }, [messages, isOpen]);
 
-  const sendMessage = (text: string) => {
-    if (!text.trim()) return;
+  const sendMessage = (textToSend: string) => {
+    if (!textToSend.trim()) return;
 
-    const newMsg: ChatMessage = {
+    const newMessage: ChatMessage = {
       id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
       meetingId,
       senderId: currentUserId,
       senderName: currentUserName,
-      text: text.trim(),
+      text: textToSend.trim(),
       timestamp: new Date().toISOString()
     };
 
-    setMessages((prev) => [...prev, newMsg]);
-
-    // Send via Socket.io if connected
-    if (socket) {
-      socket.emit('chat:message', newMsg);
-    }
-
-    // Broadcast across tabs on same device
-    if (broadcastChannelRef.current) {
-      broadcastChannelRef.current.postMessage({
-        type: 'chat:new-message',
-        message: newMsg
-      });
-    }
-
-    // Broadcast across countries via Global PeerJS Mesh
-    (window as any).csBroadcastGlobalData?.('chat', newMsg);
-
+    setMessages((prev) => [...prev, newMessage]);
     setInputText('');
 
-    // Simulate smart team response after short delay if chatting in studio
-    setTimeout(() => {
-      const responses = [
-        {
-          name: 'Amara Chen (Design Director)',
-          id: 'studio-amara',
-          text: `Agreed! The high-contrast editorial palette and typography align beautifully with the creative vision.`
-        },
-        {
-          name: 'Liam Thorne (Platform Engineer)',
-          id: 'studio-liam',
-          text: `All WebRTC mesh streams and vector sync channels are functioning with sub-50ms latency.`
-        },
-        {
-          name: 'Elena Vance (Lead Architect)',
-          id: 'studio-elena',
-          text: `I've prepared the architectural roadmap for review. You can check the shared files drawer or canvas.`
-        }
-      ];
+    // Broadcast across Socket.io
+    socket?.emit('chat:send', newMessage);
 
-      const pick = responses[Math.floor(Math.random() * responses.length)];
-      const botReply: ChatMessage = {
-        id: 'bot-' + Date.now(),
-        meetingId,
-        senderId: pick.id,
-        senderName: pick.name,
-        text: pick.text,
-        timestamp: new Date().toISOString()
-      };
+    // Broadcast across BroadcastChannel
+    broadcastChannelRef.current?.postMessage({
+      type: 'chat:new-message',
+      message: newMessage
+    });
 
-      setMessages((prev) => [...prev, botReply]);
-      if (broadcastChannelRef.current) {
-        broadcastChannelRef.current.postMessage({
-          type: 'chat:new-message',
-          message: botReply
-        });
-      }
-    }, 1200);
+    // Broadcast across Global Internet Mesh
+    (window as any).csBroadcastGlobalData?.('chat', newMessage);
   };
 
   const handleSendMessage = (e: React.FormEvent) => {
@@ -211,45 +147,54 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed sm:absolute top-16 bottom-20 right-0 w-full sm:w-96 z-40 bg-cream/95 backdrop-blur-2xl border-l border-forest/15 shadow-deep flex flex-col transition-all duration-300">
+    <div className="fixed sm:absolute top-14 bottom-18 sm:bottom-20 right-0 w-full sm:w-84 z-40 bg-[#1e2026] border-l border-[#2e323e] shadow-2xl flex flex-col transition-all duration-200 select-none text-zinc-200">
       {/* Drawer Header */}
-      <div className="p-4 sm:p-5 border-b border-forest/15 flex items-center justify-between bg-cream">
-        <div className="flex items-center space-x-2 text-forest">
-          <MessageSquare className="w-5 h-5 text-forest" />
-          <h3 className="font-display text-xl tracking-tight">ROOM DISCUSSION</h3>
+      <div className="p-3 sm:p-4 border-b border-[#2e323e] flex items-center justify-between">
+        <div className="flex items-center space-x-2">
+          <MessageSquare className="w-4 h-4 text-zinc-300" />
+          <h3 className="font-semibold text-sm text-white">Meeting Chat</h3>
         </div>
         <button
           onClick={onClose}
-          className="p-1.5 rounded-full hover:bg-forest/10 text-forest/70 hover:text-forest transition-colors"
+          className="p-1 rounded-md hover:bg-[#2c303c] text-zinc-400 hover:text-white transition-colors"
         >
-          <X className="w-5 h-5" />
+          <X className="w-4 h-4" />
         </button>
       </div>
 
       {/* Message List */}
-      <div className="flex-1 p-4 sm:p-5 overflow-y-auto space-y-4">
+      <div className="flex-1 p-3 overflow-y-auto space-y-3">
         {messages.map((m) => {
           const isMe = m.senderId === currentUserId;
+          const isSystem = m.senderId === 'system';
           const timeFormatted = new Date(m.timestamp).toLocaleTimeString([], {
             hour: '2-digit',
             minute: '2-digit'
           });
+
+          if (isSystem) {
+            return (
+              <div key={m.id} className="p-2.5 rounded-lg bg-[#252833] border border-[#353949] text-xs text-zinc-400 text-center leading-relaxed">
+                {m.text}
+              </div>
+            );
+          }
 
           return (
             <div
               key={m.id}
               className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} space-y-1`}
             >
-              <div className="flex items-center space-x-2 text-[10px] font-bold uppercase tracking-wider text-forest/60 px-1">
-                <span>{m.senderName}</span>
+              <div className="flex items-center space-x-1.5 text-[10px] text-zinc-400 px-1">
+                <span className="font-medium text-zinc-300">{isMe ? 'You' : m.senderName}</span>
                 <span>·</span>
                 <span>{timeFormatted}</span>
               </div>
               <div
-                className={`max-w-[85%] px-4 py-3 text-sm leading-relaxed ${
+                className={`max-w-[88%] px-3 py-2 text-xs leading-relaxed break-words ${
                   isMe
-                    ? 'rounded-t-2xl rounded-bl-2xl bg-forest text-cream shadow-sm'
-                    : 'rounded-t-2xl rounded-br-2xl bg-olive/50 text-forest border border-forest/10 shadow-sm'
+                    ? 'rounded-lg bg-blue-600 text-white shadow-sm'
+                    : 'rounded-lg bg-[#282b37] border border-[#373b4b] text-zinc-200 shadow-sm'
                 }`}
               >
                 {m.text}
@@ -260,35 +205,23 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Quick Suggestion Chips */}
-      <div className="px-4 py-2 border-t border-forest/10 bg-cream-light flex items-center space-x-2 overflow-x-auto no-scrollbar">
-        {QUICK_PROMPTS.map((prompt) => (
-          <button
-            key={prompt}
-            onClick={() => sendMessage(prompt)}
-            className="flex-shrink-0 text-[11px] font-medium px-3 py-1 rounded-full bg-cream border border-forest/20 text-forest hover:bg-forest hover:text-cream transition-colors"
-          >
-            {prompt}
-          </button>
-        ))}
-      </div>
-
       {/* Input Box */}
-      <form onSubmit={handleSendMessage} className="p-4 border-t border-forest/15 bg-cream">
+      <form onSubmit={handleSendMessage} className="p-3 border-t border-[#2e323e] bg-[#1a1c22]">
         <div className="flex items-center space-x-2">
           <input
             type="text"
-            placeholder="Write a message..."
+            placeholder="Type message to everyone..."
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            className="flex-1 px-4 py-3 rounded-full bg-cream-light border border-forest/20 text-forest text-sm placeholder:text-forest/40 focus:outline-none focus:border-forest"
+            className="flex-1 px-3 py-2 rounded-lg bg-[#272a34] border border-[#373b49] text-white text-xs placeholder:text-zinc-500 focus:outline-none focus:border-blue-500"
           />
           <button
             type="submit"
             disabled={!inputText.trim()}
-            className="p-3 rounded-full bg-forest text-cream disabled:opacity-40 hover:bg-forest-light transition-colors shadow-sm"
+            className="p-2 rounded-lg bg-blue-600 text-white disabled:opacity-30 hover:bg-blue-500 transition-colors"
+            title="Send Message"
           >
-            <Send className="w-4 h-4" />
+            <Send className="w-3.5 h-3.5" />
           </button>
         </div>
       </form>

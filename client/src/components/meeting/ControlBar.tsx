@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Mic, MicOff, Video, VideoOff, MonitorUp, 
   MessageSquare, Users, Palette, FolderUp, 
-  Settings, PhoneOff, CircleDot, Smile, Sparkles,
-  Camera, UserCheck
+  Settings, PhoneOff, CircleDot, Smile, ShieldCheck,
+  Camera, Check
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -15,9 +15,9 @@ interface ControlBarProps {
   participantsOpen: boolean;
   whiteboardOpen: boolean;
   filesOpen: boolean;
+  participantCount?: number;
   unreadChatCount?: number;
   isStudioCameraMode?: boolean;
-  studioPeersEnabled?: boolean;
   localStream?: MediaStream | null;
   onToggleAudio: () => void;
   onToggleVideo: () => void;
@@ -29,11 +29,10 @@ interface ControlBarProps {
   onOpenSettings: () => void;
   onLeaveMeeting: () => void;
   onToggleCameraMode?: () => void;
-  onToggleStudioPeers?: () => void;
   onSendReaction?: (emoji: string) => void;
 }
 
-const REACTIONS = ['👏', '❤️', '🎉', '🔥', '💡', '🙌'];
+const ZOOM_REACTIONS = ['👍', '👏', '❤️', '😂', '😮', '🎉'];
 
 export const ControlBar: React.FC<ControlBarProps> = ({
   isAudioMuted,
@@ -43,9 +42,9 @@ export const ControlBar: React.FC<ControlBarProps> = ({
   participantsOpen,
   whiteboardOpen,
   filesOpen,
+  participantCount = 1,
   unreadChatCount = 0,
   isStudioCameraMode = false,
-  studioPeersEnabled = true,
   localStream = null,
   onToggleAudio,
   onToggleVideo,
@@ -57,10 +56,10 @@ export const ControlBar: React.FC<ControlBarProps> = ({
   onOpenSettings,
   onLeaveMeeting,
   onToggleCameraMode,
-  onToggleStudioPeers,
   onSendReaction
 }) => {
   const [reactionsMenuOpen, setReactionsMenuOpen] = useState(false);
+  const [securityMenuOpen, setSecurityMenuOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
 
@@ -85,28 +84,24 @@ export const ControlBar: React.FC<ControlBarProps> = ({
     };
   }, [isRecording]);
 
-  // Handle Start / Stop Meeting Recording
   const handleToggleRecording = () => {
     if (isRecording) {
-      // Stop recording
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop();
       }
       setIsRecording(false);
     } else {
-      // Start recording
       recordedChunksRef.current = [];
       try {
-        let streamToRecord = localStream;
+        const streamToRecord = localStream;
         if (!streamToRecord) {
           alert('No active audio or video stream available to record.');
           return;
         }
 
-        const options = { mimeType: 'video/webm;codecs=vp9,opus' };
         let recorder: MediaRecorder;
         try {
-          recorder = new MediaRecorder(streamToRecord, options);
+          recorder = new MediaRecorder(streamToRecord, { mimeType: 'video/webm;codecs=vp9,opus' });
         } catch (e) {
           recorder = new MediaRecorder(streamToRecord);
         }
@@ -123,7 +118,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
           const a = document.createElement('a');
           a.style.display = 'none';
           a.href = url;
-          a.download = `ConnectSphere-Meeting-${new Date().toISOString().substring(0, 19).replace(/:/g, '-')}.webm`;
+          a.download = `ZoomMeeting-Recording-${new Date().toISOString().substring(0, 19).replace(/:/g, '-')}.webm`;
           document.body.appendChild(a);
           a.click();
           setTimeout(() => {
@@ -136,21 +131,19 @@ export const ControlBar: React.FC<ControlBarProps> = ({
         mediaRecorderRef.current = recorder;
         setIsRecording(true);
       } catch (err) {
-        console.error('Recording initialization failed:', err);
+        console.error('Recording failed:', err);
         alert('Could not start recording: ' + (err as any).message);
       }
     }
   };
 
-  // Trigger Reaction
   const handleTriggerReaction = (emoji: string) => {
-    // Fire confetti for celebration/fire/hearts
-    if (emoji === '🎉' || emoji === '🔥' || emoji === '❤️' || emoji === '👏') {
+    if (emoji === '🎉' || emoji === '❤️' || emoji === '👏') {
       confetti({
-        particleCount: 50,
-        spread: 60,
+        particleCount: 45,
+        spread: 55,
         origin: { y: 0.85 },
-        colors: ['#01472e', '#ccd5ae', '#e07a5f', '#e09f3e', '#fefae0']
+        colors: ['#00C853', '#0E72ED', '#FFD600', '#FF3B30', '#FFFFFF']
       });
     }
 
@@ -161,115 +154,207 @@ export const ControlBar: React.FC<ControlBarProps> = ({
   };
 
   const formatRecordTime = (totalSec: number) => {
-    const mins = Math.floor(totalSec / 60)
-      .toString()
-      .padStart(2, '0');
+    const mins = Math.floor(totalSec / 60).toString().padStart(2, '0');
     const secs = (totalSec % 60).toString().padStart(2, '0');
     return `${mins}:${secs}`;
   };
 
   return (
-    <footer className="h-20 px-3 sm:px-6 border-t border-forest/15 bg-cream/95 backdrop-blur-xl flex items-center justify-between z-30 select-none relative">
-      {/* Left section: Recording indicator & Camera Mode Switch */}
-      <div className="hidden md:flex items-center space-x-3 w-56">
-        {/* Meeting Recorder Button */}
+    <footer className="h-18 sm:h-20 px-4 sm:px-6 bg-[#181a20] border-t border-[#262933] flex items-center justify-between z-30 select-none relative text-zinc-300">
+      {/* Left Section: Audio & Video Controls (Zoom Style) */}
+      <div className="flex items-center space-x-1 sm:space-x-2">
+        {/* Mute / Unmute Button */}
         <button
-          onClick={handleToggleRecording}
-          className={`flex items-center space-x-2 px-3.5 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all shadow-sm ${
-            isRecording
-              ? 'bg-rose-700 text-cream animate-pulse ring-2 ring-rose-500'
-              : 'bg-forest/10 text-forest hover:bg-forest hover:text-cream'
+          onClick={onToggleAudio}
+          className={`flex flex-col items-center justify-center w-14 sm:w-16 h-14 rounded-lg transition-colors ${
+            isAudioMuted
+              ? 'hover:bg-rose-950/40 text-rose-500'
+              : 'hover:bg-[#262a35] text-zinc-200'
           }`}
-          title={isRecording ? 'Stop Recording and Save Video' : 'Record Meeting Session'}
+          title={isAudioMuted ? 'Unmute (Alt+A)' : 'Mute (Alt+A)'}
         >
-          <CircleDot className={`w-3.5 h-3.5 ${isRecording ? 'text-cream' : 'text-rose-600'}`} />
-          <span>{isRecording ? `REC ${formatRecordTime(recordSeconds)}` : 'Record'}</span>
+          {isAudioMuted ? (
+            <MicOff className="w-5 h-5 text-rose-500" />
+          ) : (
+            <Mic className="w-5 h-5 text-zinc-100" />
+          )}
+          <span className="text-[10px] mt-1 font-medium tracking-tight">
+            {isAudioMuted ? 'Unmute' : 'Mute'}
+          </span>
         </button>
 
-        {/* Camera Source Switcher */}
+        {/* Start / Stop Video Button */}
+        <button
+          onClick={onToggleVideo}
+          className={`flex flex-col items-center justify-center w-14 sm:w-16 h-14 rounded-lg transition-colors ${
+            isVideoOff
+              ? 'hover:bg-rose-950/40 text-rose-500'
+              : 'hover:bg-[#262a35] text-zinc-200'
+          }`}
+          title={isVideoOff ? 'Start Video (Alt+V)' : 'Stop Video (Alt+V)'}
+        >
+          {isVideoOff ? (
+            <VideoOff className="w-5 h-5 text-rose-500" />
+          ) : (
+            <Video className="w-5 h-5 text-zinc-100" />
+          )}
+          <span className="text-[10px] mt-1 font-medium tracking-tight">
+            {isVideoOff ? 'Start Video' : 'Stop Video'}
+          </span>
+        </button>
+
+        {/* Optional Virtual Camera Switcher */}
         {onToggleCameraMode && (
           <button
             onClick={onToggleCameraMode}
-            className={`p-2 rounded-full border transition-all text-xs flex items-center space-x-1 ${
-              isStudioCameraMode
-                ? 'bg-olive text-forest border-forest/30 font-bold'
-                : 'bg-forest/5 text-forest/80 border-forest/10 hover:bg-forest/10'
+            className={`hidden md:flex flex-col items-center justify-center w-12 h-14 rounded-lg hover:bg-[#262a35] transition-colors text-[10px] ${
+              isStudioCameraMode ? 'text-blue-400' : 'text-zinc-400'
             }`}
-            title={isStudioCameraMode ? 'Using Virtual Studio Camera. Click for Hardware Webcam.' : 'Using Hardware Webcam. Click for Virtual Studio Camera.'}
+            title="Switch between Webcam and Studio Avatar mode"
           >
-            <Camera className="w-3.5 h-3.5" />
-            <span className="text-[10px] hidden lg:inline">
-              {isStudioCameraMode ? 'Studio Feed' : 'Webcam'}
-            </span>
+            <Camera className="w-4 h-4" />
+            <span className="text-[9px] mt-1">Source</span>
           </button>
         )}
       </div>
 
-      {/* Center Interactive Controls */}
-      <div className="flex items-center space-x-1.5 sm:space-x-3 mx-auto">
-        {/* Audio Toggle */}
+      {/* Center Section: Zoom Action Dock */}
+      <div className="flex items-center space-x-0.5 sm:space-x-1.5">
+        {/* Security / Encryption */}
+        <div className="relative">
+          <button
+            onClick={() => setSecurityMenuOpen(!securityMenuOpen)}
+            className={`flex flex-col items-center justify-center w-13 sm:w-16 h-14 rounded-lg transition-colors hover:bg-[#262a35] ${
+              securityMenuOpen ? 'text-emerald-400 bg-[#262a35]' : 'text-zinc-300'
+            }`}
+            title="Security Settings"
+          >
+            <ShieldCheck className="w-5 h-5 text-emerald-400" />
+            <span className="text-[10px] mt-1 font-medium">Security</span>
+          </button>
+
+          {securityMenuOpen && (
+            <div className="absolute bottom-16 left-1/2 -translate-x-1/2 w-64 p-3 rounded-lg bg-[#20232b] border border-[#313644] text-xs shadow-2xl z-50 animate-in fade-in slide-in-from-bottom-2">
+              <div className="font-bold text-white mb-2 flex items-center space-x-1.5 pb-2 border-b border-[#313644]">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span>Security Overview</span>
+              </div>
+              <div className="space-y-2 text-zinc-300">
+                <div className="flex items-center justify-between">
+                  <span>End-to-End Encryption</span>
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Peer-to-Peer STUN Mesh</span>
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Global NAT Traversal</span>
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Participants */}
         <button
-          onClick={onToggleAudio}
-          className={`p-3 sm:p-3.5 rounded-full transition-all duration-300 shadow-sm ${
-            isAudioMuted
-              ? 'bg-[#7a1e1e] text-cream ring-2 ring-[#7a1e1e]/40'
-              : 'bg-forest text-cream hover:bg-forest-light'
+          onClick={onToggleParticipants}
+          className={`flex flex-col items-center justify-center w-14 sm:w-16 h-14 rounded-lg transition-colors relative hover:bg-[#262a35] ${
+            participantsOpen ? 'text-blue-400 bg-[#262a35]' : 'text-zinc-300'
           }`}
-          title={isAudioMuted ? 'Unmute Microphone' : 'Mute Microphone'}
+          title="Participants list"
         >
-          {isAudioMuted ? <MicOff className="w-4 sm:w-5 h-4 sm:h-5" /> : <Mic className="w-4 sm:w-5 h-4 sm:h-5" />}
+          <div className="relative">
+            <Users className="w-5 h-5" />
+            <span className="absolute -top-1.5 -right-2 text-[9px] font-bold px-1 rounded-full bg-blue-600 text-white min-w-[14px] text-center">
+              {participantCount}
+            </span>
+          </div>
+          <span className="text-[10px] mt-1 font-medium">Participants</span>
         </button>
 
-        {/* Video Toggle */}
+        {/* Chat */}
         <button
-          onClick={onToggleVideo}
-          className={`p-3 sm:p-3.5 rounded-full transition-all duration-300 shadow-sm ${
-            isVideoOff
-              ? 'bg-[#7a1e1e] text-cream ring-2 ring-[#7a1e1e]/40'
-              : 'bg-forest text-cream hover:bg-forest-light'
+          onClick={onToggleChat}
+          className={`flex flex-col items-center justify-center w-13 sm:w-15 h-14 rounded-lg transition-colors relative hover:bg-[#262a35] ${
+            chatOpen ? 'text-blue-400 bg-[#262a35]' : 'text-zinc-300'
           }`}
-          title={isVideoOff ? 'Turn On Camera' : 'Turn Off Camera'}
+          title="In-meeting Chat"
         >
-          {isVideoOff ? <VideoOff className="w-4 sm:w-5 h-4 sm:h-5" /> : <Video className="w-4 sm:w-5 h-4 sm:h-5" />}
+          <div className="relative">
+            <MessageSquare className="w-5 h-5" />
+            {unreadChatCount > 0 && !chatOpen && (
+              <span className="absolute -top-1.5 -right-2 w-4 h-4 rounded-full bg-rose-600 text-white text-[9px] font-bold flex items-center justify-center">
+                {unreadChatCount}
+              </span>
+            )}
+          </div>
+          <span className="text-[10px] mt-1 font-medium">Chat</span>
         </button>
 
-        {/* Screen Share */}
+        {/* ICONIC ZOOM GREEN SHARE SCREEN BUTTON */}
         <button
           onClick={onToggleScreenShare}
-          className={`p-3 sm:p-3.5 rounded-full transition-all duration-300 shadow-sm ${
+          className={`flex flex-col items-center justify-center px-3 sm:px-4 h-14 rounded-lg font-medium transition-all shadow-md mx-1 ${
             isScreenSharing
-              ? 'bg-olive text-forest font-bold ring-2 ring-forest'
-              : 'bg-forest text-cream hover:bg-forest-light'
+              ? 'bg-rose-600 hover:bg-rose-700 text-white'
+              : 'bg-emerald-600 hover:bg-emerald-500 text-white'
           }`}
-          title={isScreenSharing ? 'Stop Sharing Screen' : 'Share Screen'}
+          title={isScreenSharing ? 'Stop Screen Share' : 'Share Screen (Alt+S)'}
         >
-          <MonitorUp className="w-4 sm:w-5 h-4 sm:h-5" />
+          <MonitorUp className="w-5 h-5" />
+          <span className="text-[10px] mt-1 font-semibold whitespace-nowrap">
+            {isScreenSharing ? 'Stop Share' : 'Share Screen'}
+          </span>
         </button>
 
-        <span className="h-6 w-px bg-forest/20 mx-0.5 sm:mx-1"></span>
+        {/* Whiteboard */}
+        <button
+          onClick={onToggleWhiteboard}
+          className={`flex flex-col items-center justify-center w-13 sm:w-16 h-14 rounded-lg transition-colors hover:bg-[#262a35] ${
+            whiteboardOpen ? 'text-blue-400 bg-[#262a35]' : 'text-zinc-300'
+          }`}
+          title="Collaborative Whiteboard"
+        >
+          <Palette className="w-5 h-5" />
+          <span className="text-[10px] mt-1 font-medium">Whiteboard</span>
+        </button>
 
-        {/* Floating Reactions Trigger */}
+        {/* Record Button */}
+        <button
+          onClick={handleToggleRecording}
+          className={`hidden sm:flex flex-col items-center justify-center w-14 sm:w-16 h-14 rounded-lg transition-colors hover:bg-[#262a35] ${
+            isRecording ? 'text-rose-500 bg-rose-950/30' : 'text-zinc-300'
+          }`}
+          title={isRecording ? 'Stop Recording' : 'Record to Local Computer'}
+        >
+          <CircleDot className={`w-5 h-5 ${isRecording ? 'text-rose-500 animate-pulse' : 'text-zinc-300'}`} />
+          <span className="text-[10px] mt-1 font-medium">
+            {isRecording ? formatRecordTime(recordSeconds) : 'Record'}
+          </span>
+        </button>
+
+        {/* Reactions (Zoom Style) */}
         <div className="relative">
           <button
             onClick={() => setReactionsMenuOpen(!reactionsMenuOpen)}
-            className={`p-3 sm:p-3.5 rounded-full transition-all duration-300 shadow-sm ${
-              reactionsMenuOpen
-                ? 'bg-sage text-forest ring-2 ring-forest'
-                : 'bg-forest text-cream hover:bg-forest-light'
+            className={`flex flex-col items-center justify-center w-13 sm:w-15 h-14 rounded-lg transition-colors hover:bg-[#262a35] ${
+              reactionsMenuOpen ? 'text-amber-400 bg-[#262a35]' : 'text-zinc-300'
             }`}
-            title="Send Reaction"
+            title="Meeting Reactions"
           >
-            <Smile className="w-4 sm:w-5 h-4 sm:h-5" />
+            <Smile className="w-5 h-5" />
+            <span className="text-[10px] mt-1 font-medium">Reactions</span>
           </button>
 
-          {/* Reactions Popover */}
           {reactionsMenuOpen && (
-            <div className="absolute bottom-16 left-1/2 -translate-x-1/2 p-2 rounded-full bg-forest text-cream shadow-floating border border-forest-light flex items-center space-x-1.5 z-50 animate-in fade-in slide-in-from-bottom-2">
-              {REACTIONS.map((emoji) => (
+            <div className="absolute bottom-16 left-1/2 -translate-x-1/2 p-2 rounded-xl bg-[#20232b] border border-[#313644] text-white shadow-2xl flex items-center space-x-1 z-50 animate-in fade-in slide-in-from-bottom-2">
+              {ZOOM_REACTIONS.map((emoji) => (
                 <button
                   key={emoji}
                   onClick={() => handleTriggerReaction(emoji)}
-                  className="p-2 text-xl hover:scale-130 transition-transform active:scale-95"
+                  className="p-2 text-2xl hover:scale-125 transition-transform active:scale-95"
                 >
                   {emoji}
                 </button>
@@ -278,110 +363,39 @@ export const ControlBar: React.FC<ControlBarProps> = ({
           )}
         </div>
 
-        {/* Collaborative Whiteboard */}
-        <button
-          onClick={onToggleWhiteboard}
-          className={`p-3 sm:p-3.5 rounded-full transition-all duration-300 shadow-sm ${
-            whiteboardOpen
-              ? 'bg-sage text-forest ring-2 ring-forest'
-              : 'bg-forest text-cream hover:bg-forest-light'
-          }`}
-          title="Collaborative Whiteboard"
-        >
-          <Palette className="w-4 sm:w-5 h-4 sm:h-5" />
-        </button>
-
-        {/* Chat Drawer Toggle */}
-        <button
-          onClick={onToggleChat}
-          className={`relative p-3 sm:p-3.5 rounded-full transition-all duration-300 shadow-sm ${
-            chatOpen
-              ? 'bg-sage text-forest ring-2 ring-forest'
-              : 'bg-forest text-cream hover:bg-forest-light'
-          }`}
-          title="Meeting Chat"
-        >
-          <MessageSquare className="w-4 sm:w-5 h-4 sm:h-5" />
-          {unreadChatCount > 0 && !chatOpen && (
-            <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-rose-600 text-cream text-[10px] font-bold flex items-center justify-center border-2 border-cream">
-              {unreadChatCount}
-            </span>
-          )}
-        </button>
-
-        {/* Shared Files Drawer Toggle */}
+        {/* Shared Files */}
         <button
           onClick={onToggleFiles}
-          className={`p-3 sm:p-3.5 rounded-full transition-all duration-300 shadow-sm ${
-            filesOpen
-              ? 'bg-sage text-forest ring-2 ring-forest'
-              : 'bg-forest text-cream hover:bg-forest-light'
+          className={`hidden md:flex flex-col items-center justify-center w-13 h-14 rounded-lg transition-colors hover:bg-[#262a35] ${
+            filesOpen ? 'text-blue-400 bg-[#262a35]' : 'text-zinc-300'
           }`}
-          title="Shared Files"
+          title="Share and download files"
         >
-          <FolderUp className="w-4 sm:w-5 h-4 sm:h-5" />
-        </button>
-
-        {/* Participants Drawer */}
-        <button
-          onClick={onToggleParticipants}
-          className={`p-3 sm:p-3.5 rounded-full transition-all duration-300 shadow-sm ${
-            participantsOpen
-              ? 'bg-sage text-forest ring-2 ring-forest'
-              : 'bg-forest text-cream hover:bg-forest-light'
-          }`}
-          title="Participants"
-        >
-          <Users className="w-4 sm:w-5 h-4 sm:h-5" />
-        </button>
-
-        {/* Device Settings */}
-        <button
-          onClick={onOpenSettings}
-          className="p-3 sm:p-3.5 rounded-full bg-forest text-cream hover:bg-forest-light transition-all shadow-sm"
-          title="Audio & Video Settings"
-        >
-          <Settings className="w-4 sm:w-5 h-4 sm:h-5" />
-        </button>
-
-        <span className="h-6 w-px bg-forest/20 mx-0.5 sm:mx-1"></span>
-
-        {/* Leave Meeting Button */}
-        <button
-          onClick={onLeaveMeeting}
-          className="flex items-center space-x-1.5 sm:space-x-2 px-4 sm:px-6 py-3 sm:py-3.5 rounded-full bg-[#7a1e1e] hover:bg-[#8f2323] text-cream font-bold text-xs uppercase tracking-[0.2em] transition-all shadow-sm"
-          title="Leave Room"
-        >
-          <PhoneOff className="w-4 h-4" />
-          <span className="hidden sm:inline">Leave</span>
+          <FolderUp className="w-5 h-5" />
+          <span className="text-[10px] mt-1 font-medium">Files</span>
         </button>
       </div>
 
-      {/* Right section: Studio Team Toggle & Status */}
-      <div className="hidden md:flex items-center justify-end space-x-3 w-56">
-        {onToggleStudioPeers && (
-          <button
-            onClick={onToggleStudioPeers}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs transition-all border ${
-              studioPeersEnabled
-                ? 'bg-forest text-cream border-forest-light/40 shadow-sm'
-                : 'bg-cream text-forest/60 border-forest/20 hover:text-forest'
-            }`}
-            title={studioPeersEnabled ? 'Studio Team active. Click to hide.' : 'Solo Mode. Click to invite Studio Team.'}
-          >
-            <UserCheck className="w-3.5 h-3.5 text-sage" />
-            <span className="text-[10px] font-bold uppercase tracking-wider">
-              {studioPeersEnabled ? 'Studio Team (3)' : 'Solo'}
-            </span>
-          </button>
-        )}
+      {/* Right Section: Settings & Zoom Red End Meeting Button */}
+      <div className="flex items-center space-x-2">
+        <button
+          onClick={onOpenSettings}
+          className="p-2.5 rounded-lg hover:bg-[#262a35] text-zinc-400 hover:text-white transition-colors"
+          title="Settings"
+        >
+          <Settings className="w-5 h-5" />
+        </button>
 
-        <div className="flex items-center space-x-1.5">
-          <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
-          <span className="text-[10px] font-bold uppercase tracking-wider text-forest/70">
-            Live Mesh
-          </span>
-        </div>
+        {/* Zoom Red End/Leave Button */}
+        <button
+          onClick={onLeaveMeeting}
+          className="flex items-center space-x-1 px-3.5 sm:px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs transition-colors shadow-sm"
+          title="End or Leave Meeting"
+        >
+          <PhoneOff className="w-3.5 h-3.5 sm:hidden" />
+          <span className="hidden sm:inline">End Meeting</span>
+          <span className="sm:hidden">End</span>
+        </button>
       </div>
     </footer>
   );

@@ -226,7 +226,7 @@ export const useWebRTC = (
   const [activeSpeakerSocketId, setActiveSpeakerSocketId] = useState<string | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isStudioCameraMode, setIsStudioCameraMode] = useState<boolean>(false);
-  const [studioPeersEnabled, setStudioPeersEnabled] = useState<boolean>(true);
+  const [studioPeersEnabled, setStudioPeersEnabled] = useState<boolean>(false);
   const [myGlobalPeerId, setMyGlobalPeerId] = useState<string>('');
   const [globalMeshConnected, setGlobalMeshConnected] = useState<boolean>(false);
 
@@ -246,10 +246,10 @@ export const useWebRTC = (
 
     if (preferStudio) {
       const { stream, cleanup } = createStudioVideoStream(
-        currentUserName,
-        'Active Participant',
-        '#e07a5f',
-        ['#01472e', '#002619']
+        currentUserName || 'You',
+        'Participant',
+        '#0284c7',
+        ['#181a20', '#111317']
       );
       studioStreamCleanupRef.current = cleanup;
       localStreamRef.current = stream;
@@ -286,10 +286,10 @@ export const useWebRTC = (
       setCameraError('Hardware camera unavailable. Virtual Studio Camera active.');
 
       const { stream, cleanup } = createStudioVideoStream(
-        currentUserName,
-        'Active Contributor',
-        '#e07a5f',
-        ['#01472e', '#002619']
+        currentUserName || 'You',
+        'Participant',
+        '#0284c7',
+        ['#181a20', '#111317']
       );
       studioStreamCleanupRef.current = cleanup;
       localStreamRef.current = stream;
@@ -335,12 +335,22 @@ export const useWebRTC = (
       currentUserName,
       {
         onRemoteStream: (peerId, peerName, peerUserId, stream) => {
+          // Prevent duplicating local user or local stream
+          if (peerUserId === currentUserId) return;
+          if (stream.id === localStreamRef.current?.id) return;
+
           setRemotePeers((prev) => {
             const next = new Map(prev);
+            // Deduplicate by userId
+            for (const [k, v] of next.entries()) {
+              if (v.userId === peerUserId && k !== peerId) {
+                next.delete(k);
+              }
+            }
             next.set(peerId, {
               socketId: peerId,
               userId: peerUserId,
-              userName: peerName,
+              userName: peerName || 'Participant',
               stream,
               isAudioMuted: false,
               isVideoOff: false
@@ -352,6 +362,19 @@ export const useWebRTC = (
           setRemotePeers((prev) => {
             const next = new Map(prev);
             next.delete(peerId);
+            return next;
+          });
+        },
+        onPeerIdentityUpdate: (peerId, peerName, peerUserId) => {
+          setRemotePeers((prev) => {
+            const existing = prev.get(peerId);
+            if (!existing) return prev;
+            const next = new Map(prev);
+            next.set(peerId, {
+              ...existing,
+              userName: peerName,
+              userId: peerUserId
+            });
             return next;
           });
         },
