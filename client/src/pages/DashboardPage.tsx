@@ -25,6 +25,11 @@ export const DashboardPage: React.FC = () => {
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [scheduledSuccess, setScheduledSuccess] = useState<string | null>(null);
+  const [scheduleDate, setScheduleDate] = useState(() => new Date().toISOString().substring(0, 10));
+  const [scheduleTime, setScheduleTime] = useState('14:00');
+  const [durationMinutes, setDurationMinutes] = useState(45);
+  const [recurrence, setRecurrence] = useState('none');
+  const [passcode, setPasscode] = useState('');
 
   // Time-based editorial greeting
   const getGreeting = () => {
@@ -52,6 +57,32 @@ export const DashboardPage: React.FC = () => {
     e.preventDefault();
     const slug = (newTitle.trim() ? newTitle.trim().toLowerCase().replace(/[^a-z0-9]/g, '-') : 'session') + '-' + Math.random().toString(36).substring(2, 6);
     setScheduledSuccess(slug);
+  };
+
+  const getGoogleCalendarUrl = (title: string, roomId: string) => {
+    const start = new Date(`${scheduleDate}T${scheduleTime}:00`);
+    const end = new Date(start.getTime() + durationMinutes * 60000);
+    const fmt = (d: Date) => d.toISOString().replace(/-|:|\.\d\d\d/g, '');
+    const meetingUrl = `${window.location.origin}/meeting/${roomId}`;
+    const details = `Join ConnectSphere Video Meeting:\nLink: ${meetingUrl}\nPasscode: ${passcode || 'None'}\n\nHD Video, Live Captions, Collaborative Whiteboard & Gemini AI Notes.`;
+    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title || 'ConnectSphere Sync')}&dates=${fmt(start)}/${fmt(end)}&details=${encodeURIComponent(details)}&location=${encodeURIComponent(meetingUrl)}`;
+  };
+
+  const downloadICS = (title: string, roomId: string) => {
+    const start = new Date(`${scheduleDate}T${scheduleTime}:00`);
+    const end = new Date(start.getTime() + durationMinutes * 60000);
+    const fmt = (d: Date) => d.toISOString().replace(/-|:|\.\d\d\d/g, '');
+    const meetingUrl = `${window.location.origin}/meeting/${roomId}`;
+    const ics = `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//ConnectSphere//VideoSync//EN\nBEGIN:VEVENT\nUID:cs-${Date.now()}@connectsphere.com\nDTSTAMP:${fmt(new Date())}\nDTSTART:${fmt(start)}\nDTEND:${fmt(end)}\nSUMMARY:${title || 'ConnectSphere Sync'}\nDESCRIPTION:Join meeting: ${meetingUrl}\\nPasscode: ${passcode || 'None'}\nLOCATION:${meetingUrl}\nEND:VEVENT\nEND:VCALENDAR`;
+    const blob = new Blob([ics], { type: 'text/calendar' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `meeting-${roomId}.ics`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const recentMeetings: RecentMeeting[] = [
@@ -311,13 +342,47 @@ export const DashboardPage: React.FC = () => {
 
             {scheduledSuccess ? (
               <div className="space-y-4">
-                <div className="p-4 rounded-organic-sm bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs">
-                  <div className="font-bold uppercase tracking-wider mb-1">Room Link Generated!</div>
-                  <div className="font-mono text-xs">{window.location.origin}/meeting/{scheduledSuccess}</div>
+                <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs space-y-2">
+                  <div className="font-bold uppercase tracking-wider text-emerald-800">Room Link Generated!</div>
+                  <div className="font-mono text-xs break-all bg-white/70 p-2 rounded-lg">{window.location.origin}/meeting/{scheduledSuccess}</div>
+                  <div className="text-[11px] text-emerald-700">
+                    Scheduled for: <strong>{new Date(`${scheduleDate}T${scheduleTime}`).toLocaleString()}</strong> ({durationMinutes} mins)
+                  </div>
                 </div>
+
+                <div className="space-y-2">
+                  {/* Google Calendar Direct Link Button */}
+                  <a
+                    href={getGoogleCalendarUrl(newTitle, scheduledSuccess)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-3 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center space-x-2 transition-colors shadow-sm"
+                  >
+                    <Calendar className="w-4 h-4" />
+                    <span>Add to Google Calendar</span>
+                  </a>
+
+                  {/* Download .ics Button */}
+                  <button
+                    onClick={() => downloadICS(newTitle, scheduledSuccess)}
+                    className="w-full py-3 rounded-full border border-forest/30 hover:bg-forest/5 text-forest font-bold text-xs uppercase tracking-wider flex items-center justify-center space-x-2 transition-colors"
+                  >
+                    <span>Download .ICS Event File</span>
+                  </button>
+
+                  {/* Copy Link */}
+                  <button
+                    onClick={() => copyMeetingLink(scheduledSuccess)}
+                    className="w-full py-3 rounded-full border border-forest/30 hover:bg-forest/5 text-forest font-bold text-xs uppercase tracking-wider flex items-center justify-center space-x-2 transition-colors"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>{copiedId === scheduledSuccess ? 'Copied!' : 'Copy Meeting Invitation'}</span>
+                  </button>
+                </div>
+
                 <button
                   onClick={() => navigate(`/meeting/${scheduledSuccess}`)}
-                  className="w-full py-3.5 rounded-full bg-forest text-cream font-bold text-xs uppercase tracking-widest hover:bg-forest-light transition-all"
+                  className="w-full py-3.5 rounded-full bg-forest text-cream font-bold text-xs uppercase tracking-widest hover:bg-forest-light transition-all shadow-md"
                 >
                   Enter Room Now →
                 </button>
@@ -325,7 +390,7 @@ export const DashboardPage: React.FC = () => {
             ) : (
               <form onSubmit={handleCreateScheduledMeeting} className="space-y-4">
                 <div>
-                  <label className="editorial-label text-[10px] block mb-2 text-forest/70">
+                  <label className="editorial-label text-[10px] block mb-1 text-forest/70">
                     Session Title
                   </label>
                   <input
@@ -334,14 +399,89 @@ export const DashboardPage: React.FC = () => {
                     placeholder="e.g. Design Critique Pod"
                     value={newTitle}
                     onChange={(e) => setNewTitle(e.target.value)}
-                    className="w-full px-4 py-3 rounded-full bg-cream-light border border-forest/25 text-sm font-medium focus:outline-none focus:border-forest"
+                    className="w-full px-4 py-2.5 rounded-full bg-cream-light border border-forest/25 text-sm font-medium focus:outline-none focus:border-forest"
                   />
                 </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="editorial-label text-[10px] block mb-1 text-forest/70">
+                      Date
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={scheduleDate}
+                      onChange={(e) => setScheduleDate(e.target.value)}
+                      className="w-full px-4 py-2 rounded-full bg-cream-light border border-forest/25 text-xs font-medium focus:outline-none focus:border-forest"
+                    />
+                  </div>
+                  <div>
+                    <label className="editorial-label text-[10px] block mb-1 text-forest/70">
+                      Time
+                    </label>
+                    <input
+                      type="time"
+                      required
+                      value={scheduleTime}
+                      onChange={(e) => setScheduleTime(e.target.value)}
+                      className="w-full px-4 py-2 rounded-full bg-cream-light border border-forest/25 text-xs font-medium focus:outline-none focus:border-forest"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="editorial-label text-[10px] block mb-1 text-forest/70">
+                      Duration
+                    </label>
+                    <select
+                      value={durationMinutes}
+                      onChange={(e) => setDurationMinutes(Number(e.target.value))}
+                      className="w-full px-4 py-2.5 rounded-full bg-cream-light border border-forest/25 text-xs font-medium focus:outline-none focus:border-forest"
+                    >
+                      <option value={15}>15 Minutes</option>
+                      <option value={30}>30 Minutes</option>
+                      <option value={45}>45 Minutes</option>
+                      <option value={60}>60 Minutes</option>
+                      <option value={90}>90 Minutes</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="editorial-label text-[10px] block mb-1 text-forest/70">
+                      Repeat
+                    </label>
+                    <select
+                      value={recurrence}
+                      onChange={(e) => setRecurrence(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-full bg-cream-light border border-forest/25 text-xs font-medium focus:outline-none focus:border-forest"
+                    >
+                      <option value="none">Does not repeat</option>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="editorial-label text-[10px] block mb-1 text-forest/70">
+                    Passcode (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 123456"
+                    value={passcode}
+                    onChange={(e) => setPasscode(e.target.value)}
+                    className="w-full px-4 py-2 rounded-full bg-cream-light border border-forest/25 text-xs font-medium focus:outline-none focus:border-forest"
+                  />
+                </div>
+
                 <button
                   type="submit"
                   className="w-full py-3.5 rounded-full bg-forest text-cream font-bold text-xs uppercase tracking-widest hover:bg-forest-light transition-all shadow-sm"
                 >
-                  Create Custom Room →
+                  Schedule &amp; Generate Links →
                 </button>
               </form>
             )}

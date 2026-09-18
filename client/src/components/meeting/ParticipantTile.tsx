@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Mic, MicOff, VideoOff, Pin, User as UserIcon } from 'lucide-react';
+import { Mic, MicOff, VideoOff, Pin, User as UserIcon, Shield } from 'lucide-react';
 
 interface ParticipantTileProps {
   stream: MediaStream | null;
@@ -11,6 +11,7 @@ interface ParticipantTileProps {
   isSpeaking?: boolean;
   isPinned?: boolean;
   isStudioPeer?: boolean;
+  isHandRaised?: boolean;
   reactionEmoji?: string | null;
   onPin?: () => void;
   onRename?: () => void;
@@ -19,11 +20,13 @@ interface ParticipantTileProps {
 export const ParticipantTile: React.FC<ParticipantTileProps> = ({
   stream,
   name,
+  role,
   isLocal = false,
   isAudioMuted = false,
   isVideoOff = false,
   isSpeaking = false,
   isPinned = false,
+  isHandRaised = false,
   reactionEmoji = null,
   onPin,
   onRename
@@ -66,7 +69,7 @@ export const ParticipantTile: React.FC<ParticipantTileProps> = ({
         } ${isLocal ? 'scale-x-[-1]' : ''}`}
       />
 
-      {/* Camera Off Avatar Fallback (Clean Zoom Style) */}
+      {/* Camera Off Avatar Fallback */}
       {isVideoOff && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#181a20]">
           <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-[#272a34] border border-[#373b49] text-zinc-200 flex items-center justify-center font-bold text-2xl sm:text-3xl shadow-inner">
@@ -75,6 +78,14 @@ export const ParticipantTile: React.FC<ParticipantTileProps> = ({
           <span className="mt-3 text-xs sm:text-sm font-medium text-zinc-300">
             {displayName} {isLocal && '(Me)'}
           </span>
+        </div>
+      )}
+
+      {/* Hand Raised Floating Badge */}
+      {isHandRaised && (
+        <div className="absolute top-3 left-3 z-30 flex items-center space-x-1 px-2.5 py-1 rounded-full bg-amber-500/90 text-white text-xs font-bold shadow-lg animate-bounce">
+          <span>✋</span>
+          <span className="text-[10px] uppercase tracking-wider">Hand Raised</span>
         </div>
       )}
 
@@ -122,6 +133,11 @@ export const ParticipantTile: React.FC<ParticipantTileProps> = ({
         <span className="truncate">
           {displayName} {isLocal && <span className="text-zinc-400 font-normal">(Me)</span>}
         </span>
+        {role && (
+          <span className="text-[9px] px-1 rounded bg-white/10 text-zinc-300 font-semibold ml-1">
+            {role}
+          </span>
+        )}
       </div>
     </div>
   );

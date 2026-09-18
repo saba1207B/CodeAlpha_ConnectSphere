@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Socket } from 'socket.io-client';
 import { GlobalMeshCoordinator } from '../services/globalMesh';
+import { audioProcessor } from '../services/audioProcessor';
+import { videoEffectsProcessor, VisualFilter, VirtualBackground } from '../services/videoEffects';
+import { VideoQualityLevel } from '../components/meeting/DeviceSettingsModal';
 
 const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
@@ -190,6 +193,10 @@ export const useWebRTC = (
   const [studioPeersEnabled, setStudioPeersEnabled] = useState<boolean>(false);
   const [myGlobalPeerId, setMyGlobalPeerId] = useState<string>('');
   const [globalMeshConnected, setGlobalMeshConnected] = useState<boolean>(false);
+  const [videoQuality, setVideoQualityState] = useState<VideoQualityLevel>('720p');
+  const [raisedHands, setRaisedHands] = useState<string[]>([]);
+  const [activeAudioDeviceId, setActiveAudioDeviceId] = useState<string>('');
+  const [activeVideoDeviceId, setActiveVideoDeviceId] = useState<string>('');
 
   const localStreamRef = useRef<MediaStream | null>(null);
   const realHardwareStreamRef = useRef<MediaStream | null>(null);
@@ -198,8 +205,8 @@ export const useWebRTC = (
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const globalMeshRef = useRef<GlobalMeshCoordinator | null>(null);
 
-  // Initialize Media (Hardware camera with dynamic Studio fallback)
-  const initMedia = useCallback(async (preferStudio = false) => {
+  // Initialize Media (Hardware camera with dynamic Studio fallback & quality constraints)
+  const initMedia = useCallback(async (preferStudio = false, quality: VideoQualityLevel = '720p', audioDevId?: string, videoDevId?: string) => {
     if (studioStreamCleanupRef.current) {
       studioStreamCleanupRef.current();
       studioStreamCleanupRef.current = null;
@@ -221,19 +228,52 @@ export const useWebRTC = (
       return stream;
     }
 
+    if (quality === 'audio-only') {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: audioDevId ? { deviceId: { exact: audioDevId } } : { echoCancellation: true, noiseSuppression: true },
+          video: false
+        });
+        localStreamRef.current = stream;
+        setLocalStream(stream);
+        setIsVideoOff(true);
+        setIsStudioCameraMode(false);
+        globalMeshRef.current?.setLocalStream(stream);
+        return stream;
+      } catch (err: any) {
+        console.warn('Audio-only acquisition failed:', err);
+      }
+    }
+
     try {
       setCameraError(null);
+      const qualityConstraints: Record<string, { width: number; height: number; frameRate: number }> = {
+        '1080p': { width: 1920, height: 1080, frameRate: 60 },
+        '720p': { width: 1280, height: 720, frameRate: 30 },
+        '480p': { width: 854, height: 480, frameRate: 24 },
+        '360p': { width: 640, height: 360, frameRate: 20 }
+      };
+
+      const res = qualityConstraints[quality] || qualityConstraints['720p'];
+
+      const videoConstraint: any = {
+        width: { ideal: res.width },
+        height: { ideal: res.height },
+        frameRate: { ideal: res.frameRate },
+        facingMode: 'user'
+      };
+      if (videoDevId) videoConstraint.deviceId = { exact: videoDevId };
+
+      const audioConstraint: any = {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      };
+      if (audioDevId) audioConstraint.deviceId = { exact: audioDevId };
+
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          facingMode: 'user'
-        },
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        }
+        video: videoConstraint,
+        audio: audioConstraint
       });
 
       realHardwareStreamRef.current = stream;
@@ -302,6 +342,9 @@ export const useWebRTC = (
 
           setRemotePeers((prev) => {
             const next = new Map(prev);
+            const isNew = !next.has(peerId);
+            if (isNew) audioProcessor.playJoinChime();
+
             // Deduplicate by userId
             for (const [k, v] of next.entries()) {
               if (v.userId === peerUserId && k !== peerId) {
@@ -320,6 +363,7 @@ export const useWebRTC = (
           });
         },
         onPeerLeave: (peerId) => {
+          audioProcessor.playLeaveChime();
           setRemotePeers((prev) => {
             const next = new Map(prev);
             next.delete(peerId);
@@ -557,6 +601,107 @@ export const useWebRTC = (
     }
   };
 
+  // Socket & Mesh listeners for Hand-Raises & Moderation
+  useEffect(() => {
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel(`connectsphere_signals_${meetingId}`);
+      bc.onmessage = (e) => {
+        const { type, payload } = e.data;
+        if (type === 'hand-raise') {
+          setRaisedHands((prev) => {
+            const has = prev.includes(payload.userId);
+            const next = has ? prev.filter((id) => id !== payload.userId) : [...prev, payload.userId];
+            if (!has) audioProcessor.playHandRaiseChime();
+            return next;
+          });
+        } else if (type === 'force-mute' && payload.targetUserId === currentUserId) {
+          if (localStreamRef.current) {
+            localStreamRef.current.getAudioTracks().forEach((t) => (t.enabled = false));
+            setIsAudioMuted(true);
+          }
+        }
+      };
+    } catch (e) {}
+
+    if (socket) {
+      const handleRemoteHandRaise = (data: { userId: string }) => {
+        setRaisedHands((prev) => {
+          const has = prev.includes(data.userId);
+          const next = has ? prev.filter((id) => id !== data.userId) : [...prev, data.userId];
+          if (!has) audioProcessor.playHandRaiseChime();
+          return next;
+        });
+      };
+
+      const handleForceMute = (data: { targetUserId: string }) => {
+        if (data.targetUserId === currentUserId) {
+          if (localStreamRef.current) {
+            localStreamRef.current.getAudioTracks().forEach((t) => (t.enabled = false));
+            setIsAudioMuted(true);
+          }
+        }
+      };
+
+      socket.on('meeting:hand-raise', handleRemoteHandRaise);
+      socket.on('meeting:force-mute', handleForceMute);
+
+      return () => {
+        socket.off('meeting:hand-raise', handleRemoteHandRaise);
+        socket.off('meeting:force-mute', handleForceMute);
+        if (bc) bc.close();
+      };
+    }
+
+    return () => {
+      if (bc) bc.close();
+    };
+  }, [meetingId, currentUserId, socket]);
+
+  const toggleHandRaise = () => {
+    const has = raisedHands.includes(currentUserId);
+    const next = has ? raisedHands.filter((id) => id !== currentUserId) : [...raisedHands, currentUserId];
+    setRaisedHands(next);
+    if (!has) audioProcessor.playHandRaiseChime();
+
+    socket?.emit('meeting:hand-raise', { meetingId, userId: currentUserId });
+    try {
+      const bc = new BroadcastChannel(`connectsphere_signals_${meetingId}`);
+      bc.postMessage({ type: 'hand-raise', payload: { userId: currentUserId } });
+      bc.close();
+    } catch (e) {}
+  };
+
+  const setVideoQuality = async (quality: VideoQualityLevel) => {
+    setVideoQualityState(quality);
+    await initMedia(isStudioCameraMode, quality, activeAudioDeviceId, activeVideoDeviceId);
+  };
+
+  const switchDevice = async (kind: 'audioinput' | 'videoinput' | 'audiooutput', deviceId: string) => {
+    if (kind === 'audioinput') {
+      setActiveAudioDeviceId(deviceId);
+      await initMedia(isStudioCameraMode, videoQuality, deviceId, activeVideoDeviceId);
+    } else if (kind === 'videoinput') {
+      setActiveVideoDeviceId(deviceId);
+      await initMedia(isStudioCameraMode, videoQuality, activeAudioDeviceId, deviceId);
+    }
+  };
+
+  const applyEffects = (filter: VisualFilter, background: VirtualBackground) => {
+    videoEffectsProcessor.setSettings({ filter, background });
+    if (realHardwareStreamRef.current && (filter !== 'none' || background !== 'none')) {
+      const processed = videoEffectsProcessor.startProcessing(realHardwareStreamRef.current);
+      localStreamRef.current = processed;
+      setLocalStream(processed);
+      globalMeshRef.current?.setLocalStream(processed);
+    } else if (realHardwareStreamRef.current) {
+      videoEffectsProcessor.stopProcessing();
+      localStreamRef.current = realHardwareStreamRef.current;
+      setLocalStream(realHardwareStreamRef.current);
+      globalMeshRef.current?.setLocalStream(realHardwareStreamRef.current);
+    }
+  };
+
   return {
     localStream,
     screenStream,
@@ -570,10 +715,16 @@ export const useWebRTC = (
     studioPeersEnabled,
     myGlobalPeerId,
     globalMeshConnected,
+    videoQuality,
+    raisedHands,
     toggleAudio,
     toggleVideo,
     toggleScreenShare,
     toggleCameraMode,
-    toggleStudioPeers
+    toggleStudioPeers,
+    toggleHandRaise,
+    setVideoQuality,
+    switchDevice,
+    applyEffects
   };
 };
