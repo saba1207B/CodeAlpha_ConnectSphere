@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ConnectSphere | Redirecting...</title>
+    <script>
+      // Single Page Application GitHub Pages routing redirect
+      (function () {
+        var path = window.location.pathname;
+        var repo = path.split('/')[1] || '';
+        var search = window.location.search || '';
+        var hash = window.location.hash || '';
+        
+        // If repo path exists, redirect into hash router
+        var newUrl = window.location.origin + '/' + repo + '/#' + path.replace('/' + repo, '') + search + hash;
+        window.location.replace(newUrl);
+      })();
+    </script>
+  </head>
+  <body style="background-color: #fefae0; color: #01472e; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0;">
+    <div style="text-align: center;">
+      <h2 style="font-size: 24px; letter-spacing: 0.05em;">CONNECTSPHERE</h2>
+      <p style="font-size: 14px; opacity: 0.7;">Redirecting to collaborative workspace...</p>
+    </div>
+  </body>
+</html>
