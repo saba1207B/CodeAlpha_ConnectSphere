@@ -16,7 +16,7 @@ Experience the live application deployed directly on GitHub Pages:
 
 🔗 **Live Website**: [https://saba1207b.github.io/CodeAlpha_ConnectSphere/](https://saba1207b.github.io/CodeAlpha_ConnectSphere/)
 
-> ⚠️ **THIS WEBSITE IS UNDER DEVELOPEMENT AND SEVERAL FEATURES MAY NOT WORK, FOR BETTER EXPERIENCE PLEASE USE A DESKTOP BROWSER**
+> ℹ️ **Development note:** The live deployment is an internship demonstration. Real-time features such as camera/microphone access, screen sharing, WebRTC connections, and speech recognition depend on browser permissions, browser support, and network conditions. A desktop browser is recommended for the full experience.
 
 ---
 
